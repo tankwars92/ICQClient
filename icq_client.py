@@ -105,6 +105,14 @@ BUDDY_IGNORE = 0x000E
 BUDDY_INVISIBLE = 0x0003
 BUDDY_VISIBLE = 0x0002
 
+FEEDBAG_CLASS_BUDDY = 0x0000
+FEEDBAG_CLASS_GROUP = 0x0001
+FEEDBAG_CLASS_PERMIT = 0x0002
+FEEDBAG_CLASS_DENY = 0x0003
+FEEDBAG_CLASS_PDINFO = 0x0004
+FEEDBAG_CLASS_BUDDY_PREFS = 0x0005
+FEEDBAG_CLASS_IGNORE = 0x000E
+
 ERRSSL_NOTFOUND = 0x0002
 ERRSSL_EXISTS = 0x0003
 ERRSSL_AUTH = 0x000E
@@ -821,6 +829,15 @@ def icq_encode(text: str, encoding: str = ICQ_MESSAGE_ENCODING) -> bytes:
 
 def icq_decode(data: bytes, encoding: str = ICQ_MESSAGE_ENCODING) -> str:
     return data.decode(encoding, errors="replace")
+
+
+@dataclass
+class FeedbagItem:
+    name: str = ""
+    group_id: int = 0
+    item_id: int = 0
+    class_id: int = 0
+    tlvs: bytes = b""
 
 
 @dataclass
@@ -1739,6 +1756,104 @@ def create_cli_addinvisible(pkt: RawPkt, uins: Sequence[str], seq: List[int]) ->
     pkt_final(pkt)
 
 
+def encode_feedbag_item(item: FeedbagItem) -> bytes:
+    buf = RawPkt()
+    name_b = item.name.encode("utf-8")
+    pkt_int(buf, len(name_b), 2)
+    pkt_add_arr_buf(buf, name_b)
+    pkt_int(buf, item.group_id, 2)
+    pkt_int(buf, item.item_id, 2)
+    pkt_int(buf, item.class_id, 2)
+    pkt_int(buf, len(item.tlvs), 2)
+    if item.tlvs:
+        pkt_add_arr_buf(buf, item.tlvs)
+    return buf.bytes()
+
+
+def parse_feedbag_items(data: bytes) -> List[FeedbagItem]:
+    pkt = RawPkt()
+    pkt.buf = bytearray(data)
+
+    if not data:
+        return []
+
+    get_int(pkt, 1)
+    count = get_int(pkt, 2)
+    items: List[FeedbagItem] = []
+
+    for _ in range(count):
+        if pkt.pos + 8 > len(pkt.buf):
+            break
+
+        name_len = get_int(pkt, 2)
+
+        if pkt.pos + name_len + 8 > len(pkt.buf):
+            break
+
+        name = get_bytes(pkt, name_len).decode("utf-8", errors="replace")
+        group_id = get_int(pkt, 2)
+        item_id = get_int(pkt, 2)
+        class_id = get_int(pkt, 2)
+        tlv_len = get_int(pkt, 2)
+
+        if pkt.pos + tlv_len > len(pkt.buf):
+            break
+
+        tlvs = get_bytes(pkt, tlv_len)
+        items.append(FeedbagItem(name, group_id, item_id, class_id, tlvs))
+        
+    return items
+
+
+def feedbag_items_to_delete(items: Sequence[FeedbagItem]) -> List[FeedbagItem]:
+    buddies: List[FeedbagItem] = []
+    groups: List[FeedbagItem] = []
+    other: List[FeedbagItem] = []
+
+    for item in items:
+        if item.class_id == FEEDBAG_CLASS_BUDDY:
+            buddies.append(item)
+
+        elif item.class_id == FEEDBAG_CLASS_GROUP:
+            if item.group_id == 0 and item.name == "":
+                continue
+
+            groups.append(item)
+
+        elif item.class_id in (FEEDBAG_CLASS_PERMIT, FEEDBAG_CLASS_DENY, FEEDBAG_CLASS_IGNORE):
+            other.append(item)
+
+    return buddies + groups + other
+
+
+def create_cli_feedbag_rights_query(pkt: RawPkt, seq: List[int]) -> None:
+    pkt_init(pkt, 2, seq)
+    pkt_snac(pkt, 0x13, 0x02, 0, 0)
+    pkt_final(pkt)
+
+
+def create_cli_feedbag_query(pkt: RawPkt, seq: List[int]) -> None:
+    pkt_init(pkt, 2, seq)
+    pkt_snac(pkt, 0x13, 0x04, 0, 0)
+    pkt_final(pkt)
+
+
+def create_cli_feedbag_use(pkt: RawPkt, seq: List[int]) -> None:
+    pkt_init(pkt, 2, seq)
+    pkt_snac(pkt, 0x13, 0x07, 0, 0)
+    pkt_final(pkt)
+
+
+def create_cli_feedbag_delete_items(pkt: RawPkt, items: Sequence[FeedbagItem], seq: List[int]) -> None:
+    body = RawPkt()
+    for item in items:
+        pkt_add_arr_buf(body, encode_feedbag_item(item))
+    pkt_init(pkt, 2, seq)
+    pkt_snac(pkt, 0x13, 0x0A, 0, 0)
+    pkt_add_arr_buf(pkt, body.bytes())
+    pkt_final(pkt)
+
+
 def create_cli_reminvisible(pkt: RawPkt, uin: int, seq: List[int]) -> None:
     pkt_init(pkt, 2, seq)
     pkt_snac(pkt, 0x09, 0x08, 0, 0)
@@ -2071,6 +2186,7 @@ class ICQClient:
         self.contact_list: List[str] = []
         self.visible_list: List[str] = []
         self.invisible_list: List[str] = []
+        self.feedbag_items: List[FeedbagItem] = []
         self._seq = [random.randint(0, 0xAAAA)]
         self._seq2 = [2]
         self._cookie = ""
@@ -2082,6 +2198,7 @@ class ICQClient:
         self._sinfo_chain: Dict[str, str] = {}
         self._lock = threading.RLock()
         self._login_event = threading.Event()
+        self._feedbag_event = threading.Event()
         self._login_ok = False
 
         self.on_login: Optional[Callable[["ICQClient"], None]] = None
@@ -2222,6 +2339,64 @@ class ICQClient:
         pkt = RawPkt()
         create_cli_removecontact(pkt, uin, self._seq)
         self._send(pkt)
+
+    def request_feedbag(self) -> None:
+        if not self.logged_in:
+            return
+
+        self._feedbag_event.clear()
+        pkt = RawPkt()
+        create_cli_feedbag_rights_query(pkt, self._seq)
+        self._send(pkt)
+
+        pkt = RawPkt()
+        create_cli_feedbag_use(pkt, self._seq)
+        self._send(pkt)
+
+        pkt = RawPkt()
+        create_cli_feedbag_query(pkt, self._seq)
+        self._send(pkt)
+
+    def wait_feedbag(self, timeout: float = 30.0) -> bool:
+        return self._feedbag_event.wait(timeout)
+
+    def clear_contact_list(self, timeout: float = 30.0) -> int:
+        if not self.logged_in:
+            return 0
+
+        self.contact_list.clear()
+        self.request_feedbag()
+
+        if not self.wait_feedbag(timeout):
+            return 0
+
+        to_delete = feedbag_items_to_delete(self.feedbag_items)
+
+        if not to_delete:
+            return 0
+            
+        pkt = RawPkt()
+        create_cli_feedbag_delete_items(pkt, to_delete, self._seq)
+        self._send(pkt)
+
+        for item in to_delete:
+            if item.class_id == FEEDBAG_CLASS_BUDDY and item.name.isdigit():
+                pkt = RawPkt()
+                create_cli_removecontact(pkt, int(item.name), self._seq)
+                self._send(pkt)
+
+        self.feedbag_items = [item for item in self.feedbag_items if item not in to_delete]
+
+        return len(to_delete)
+
+    def _handle_feedbag_reply(self, pkt: RawPkt) -> None:
+        body = pkt.buf[pkt.pos :]
+        self.feedbag_items = parse_feedbag_items(body)
+        self._feedbag_event.set()
+
+        if self.on_contact_list_recv:
+            buddies = [item.name for item in self.feedbag_items if item.class_id == FEEDBAG_CLASS_BUDDY]
+            self.on_contact_list_recv(self, "", buddies)
 
     def send_auth_request(self, uin: str, msg: str) -> None:
         if not self.logged_in:
@@ -2514,7 +2689,9 @@ class ICQClient:
                     if self.on_login:
                         self.on_login(self)
                 elif snac.family == 0x13:
-                    if snac.sub_type == 0x19:
+                    if snac.sub_type == 0x06:
+                        self._handle_feedbag_reply(pkt)
+                    elif snac.sub_type == 0x19:
                         u = get_lstr(pkt)
                         reason = get_wstr(pkt)
                         if self.on_auth_request:
@@ -2735,7 +2912,8 @@ __all__ = [
     "ErrorType",
     "ProxyType",
     "InfoType",
-    "XtrazNotifyRequest",
+    "FeedbagItem",
+    "FEEDBAG_CLASS_BUDDY",
     "XtrazNotifyResponse",
     "S_ONLINE",
     "S_INVISIBLE",
