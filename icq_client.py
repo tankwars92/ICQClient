@@ -19,7 +19,9 @@
 
 from __future__ import annotations
 
+import html
 import random
+import re
 import socket
 import struct
 import threading
@@ -138,6 +140,116 @@ CAPS_SETUSERINFO = bytes([
 ])
 
 CAPABILITIES_MSG = CAPS_SETUSERINFO[:16]
+CAP_XTRAZ_SCRIPT = bytes.fromhex("3b60b3efd82a6c45a4e09c5a5e67e865")
+MESSAGE_TYPE_EXTENDED = 0x001A
+
+XTRAZ_FUNC_INVITATION = 0x0001
+XTRAZ_FUNC_DATA = 0x0002
+XTRAZ_FUNC_USER_REMOVE = 0x0004
+XTRAZ_FUNC_NOTIFY = 0x0008
+
+XSTATUS_ANGRY = 1
+XSTATUS_DUCK = 2
+XSTATUS_TIRED = 3
+XSTATUS_PARTY = 4
+XSTATUS_BEER = 5
+XSTATUS_THINKING = 6
+XSTATUS_EATING = 7
+XSTATUS_TV = 8
+XSTATUS_FRIENDS = 9
+XSTATUS_COFFEE = 10
+XSTATUS_MUSIC = 11
+XSTATUS_BUSINESS = 12
+XSTATUS_CAMERA = 13
+XSTATUS_FUNNY = 14
+XSTATUS_PHONE = 15
+XSTATUS_GAMES = 16
+XSTATUS_COLLEGE = 17
+XSTATUS_SHOPPING = 18
+XSTATUS_SICK = 19
+XSTATUS_SLEEPING = 20
+XSTATUS_SURFING = 21
+XSTATUS_INTERNET = 22
+XSTATUS_ENGINEERING = 23
+XSTATUS_TYPING = 24
+XSTATUS_PPC = 25
+XSTATUS_MOBILE = 26
+XSTATUS_LOVE = 27
+XSTATUS_SEARCHING = 28
+XSTATUS_EVIL = 29
+XSTATUS_DEPRESSION = 30
+XSTATUS_PARTY2 = 31
+XSTATUS_COFFEE2 = 32
+
+XSTATUS_NAMES: Dict[int, str] = {
+    XSTATUS_ANGRY: "angry",
+    XSTATUS_DUCK: "duck",
+    XSTATUS_TIRED: "tired",
+    XSTATUS_PARTY: "party",
+    XSTATUS_BEER: "beer",
+    XSTATUS_THINKING: "thinking",
+    XSTATUS_EATING: "eating",
+    XSTATUS_TV: "tv",
+    XSTATUS_FRIENDS: "friends",
+    XSTATUS_COFFEE: "coffee",
+    XSTATUS_MUSIC: "music",
+    XSTATUS_BUSINESS: "business",
+    XSTATUS_CAMERA: "camera",
+    XSTATUS_FUNNY: "funny",
+    XSTATUS_PHONE: "phone",
+    XSTATUS_GAMES: "games",
+    XSTATUS_COLLEGE: "college",
+    XSTATUS_SHOPPING: "shopping",
+    XSTATUS_SICK: "sick",
+    XSTATUS_SLEEPING: "sleeping",
+    XSTATUS_SURFING: "surfing",
+    XSTATUS_INTERNET: "internet",
+    XSTATUS_ENGINEERING: "engineering",
+    XSTATUS_TYPING: "typing",
+    XSTATUS_PPC: "ppc",
+    XSTATUS_MOBILE: "mobile",
+    XSTATUS_LOVE: "love",
+    XSTATUS_SEARCHING: "searching",
+    XSTATUS_EVIL: "evil",
+    XSTATUS_DEPRESSION: "depression",
+    XSTATUS_PARTY2: "party2",
+    XSTATUS_COFFEE2: "coffee2",
+}
+
+XSTATUS_GUIDS: Dict[int, bytes] = {
+    XSTATUS_ANGRY: bytes.fromhex("01d8d7eeac3b492aa58dd3d877e66b92"),
+    XSTATUS_DUCK: bytes.fromhex("5a581ea1e580430ca06f612298b7e4c7"),
+    XSTATUS_TIRED: bytes.fromhex("83c9b78e77e74378b2c5fb6cfcc35bec"),
+    XSTATUS_PARTY: bytes.fromhex("e601e41c33734bd1bc06811d6c323d81"),
+    XSTATUS_BEER: bytes.fromhex("8c50dbae81ed4786acca16cc3213c7b7"),
+    XSTATUS_THINKING: bytes.fromhex("3fb0bd36af3b4a609eefcf190f6a5a7f"),
+    XSTATUS_EATING: bytes.fromhex("f8e8d7b282c4414290f810c6ce0a89a6"),
+    XSTATUS_TV: bytes.fromhex("80537de2a4674a76b3546dfd075f5ec6"),
+    XSTATUS_FRIENDS: bytes.fromhex("631436ff3f8a40d0a5cb7b66e051b364"),
+    XSTATUS_COFFEE: bytes.fromhex("1b78ae31fa0b4d3893d1997eeeafb218"),
+    XSTATUS_MUSIC: bytes.fromhex("61bee0dd8bdd475d8dee5f4baacf19a7"),
+    XSTATUS_BUSINESS: bytes.fromhex("488e14898aca4a0882aa77ce7a165208"),
+    XSTATUS_CAMERA: bytes.fromhex("1292e5501b644f66b206b29af378e48d"),
+    XSTATUS_FUNNY: bytes.fromhex("6f4930984f7c4affa27634a03bceaea7"),
+    XSTATUS_PHONE: bytes.fromhex("1292e5501b644f66b206b29af378e48d"),
+    XSTATUS_GAMES: bytes.fromhex("d4a611d08f014ec09223c5b6bec6ccf0"),
+    XSTATUS_COLLEGE: bytes.fromhex("609d52f8a29a49a6b2a02524c5e9d260"),
+    XSTATUS_SHOPPING: bytes.fromhex("63627337a03f49ff80e5f709cde0a4ee"),
+    XSTATUS_SICK: bytes.fromhex("1f7a4071bf3b4e60bc324c5787b04cf1"),
+    XSTATUS_SLEEPING: bytes.fromhex("785e8c4840d34c65886f04cf3f3f43df"),
+    XSTATUS_SURFING: bytes.fromhex("a6ed557e6bf744d4a5d4d2e7d95ce81f"),
+    XSTATUS_INTERNET: bytes.fromhex("12d07e3ef885489e8e97a72a6551e58d"),
+    XSTATUS_ENGINEERING: bytes.fromhex("ba74db3e9e24434b87b62f6b8dfee50f"),
+    XSTATUS_TYPING: bytes.fromhex("634f6bd8add24aa1aab9115bc26d05a1"),
+    XSTATUS_PPC: bytes.fromhex("101117c9a3b040f981ac49e159fbd5d4"),
+    XSTATUS_MOBILE: bytes.fromhex("160c60bbdd4443f39140050f00e6c009"),
+    XSTATUS_LOVE: bytes.fromhex("ddcf0ea971954048a9c6413206d6f280"),
+    XSTATUS_SEARCHING: bytes.fromhex("d4e2b0ba334e4fa598d0117dbf4d3cc8"),
+    XSTATUS_EVIL: bytes.fromhex("3fb0bd36af3b4a609eefcf190f6a5a7e"),
+    XSTATUS_DEPRESSION: bytes.fromhex("631436ff3f8a40d0a5cb7b66e051b364"),
+    XSTATUS_PARTY2: bytes.fromhex("2ce0e4e57c6443709c3a7a1ce878a7dc"),
+    XSTATUS_COFFEE2: bytes.fromhex("1b78ae31fa0b4d3893d1997eeeafb218"),
+}
 
 CLI_READY_BUF = bytes([
     0x00, 0x01, 0x00, 0x03, 0x01, 0x10, 0x04, 0x7B,
@@ -711,6 +823,194 @@ def icq_decode(data: bytes, encoding: str = ICQ_MESSAGE_ENCODING) -> str:
     return data.decode(encoding, errors="replace")
 
 
+@dataclass
+class XtrazNotifyRequest:
+    plugin_id: str = ""
+    service_id: str = ""
+    request_id: str = ""
+    trans_id: str = ""
+    sender_id: str = ""
+
+
+@dataclass
+class XtrazNotifyResponse:
+    uin: str = ""
+    index: int = 0
+    title: str = ""
+    message: str = ""
+
+
+def xstatus_name(index: int) -> str:
+    return XSTATUS_NAMES.get(index, f"xstatus_{index}")
+
+
+def xtraz_mangle_xml(text: str) -> str:
+    return html.escape(text, quote=True)
+
+
+def xtraz_unmangle_xml(text: str) -> str:
+    return html.unescape(text)
+
+
+def build_xtraz_notify_request(sender_uin: Union[str, int]) -> str:
+    xml = (
+        "<N><QUERY><PluginID>srvMng</PluginID></QUERY>"
+        "<NOTIFY><srv><id>cAwaySrv</id>"
+        f"<req><id>AwayStat</id><trans>1</trans><senderId>{sender_uin}</senderId>"
+        "</req></srv></NOTIFY></N>"
+    )
+    return xtraz_mangle_xml(xml)
+
+
+def build_xtraz_notify_response(uin: Union[str, int], index: int, title: str, message: str) -> str:
+    xml = (
+        '<NR><RES><ret event="OnRemoteNotification"><srv><id></id>'
+        '<val srv_id="cAwaySrv"><Root><CASXtraSetAwayMessage></CASXtraSetAwayMessage>'
+        f"<uin>{uin}</uin><index>{index}</index>"
+        f"<title>{xtraz_mangle_xml(title)}</title>"
+        f"<desc>{xtraz_mangle_xml(message)}</desc>"
+        "</Root></val></srv></ret></RES></NR>"
+    )
+    return xtraz_mangle_xml(xml)
+
+
+def _xtraz_xml_tag(xml: str, tag: str) -> str:
+    m = re.search(rf"<{tag}>(.*?)</{tag}>", xml, re.DOTALL)
+    return xtraz_unmangle_xml(m.group(1)) if m else ""
+
+
+def parse_xtraz_notify_request(xml_data: Union[str, bytes]) -> Optional[XtrazNotifyRequest]:
+    xml = xtraz_unmangle_xml(xml_data.decode("ascii", errors="replace") if isinstance(xml_data, bytes) else xml_data)
+    if "<N>" not in xml:
+        return None
+    srv = re.search(r"<srv><id>(.*?)</id>", xml, re.DOTALL)
+    req = re.search(r"<req><id>(.*?)</id>", xml, re.DOTALL)
+    return XtrazNotifyRequest(
+        plugin_id=_xtraz_xml_tag(xml, "PluginID"),
+        service_id=xtraz_unmangle_xml(srv.group(1)) if srv else "",
+        request_id=xtraz_unmangle_xml(req.group(1)) if req else "",
+        trans_id=_xtraz_xml_tag(xml, "trans"),
+        sender_id=_xtraz_xml_tag(xml, "senderId"),
+    )
+
+
+def parse_xtraz_notify_response(xml_data: Union[str, bytes]) -> Optional[XtrazNotifyResponse]:
+    xml = xtraz_unmangle_xml(xml_data.decode("ascii", errors="replace") if isinstance(xml_data, bytes) else xml_data)
+    root_start = xml.find("<Root>")
+    root_end = xml.find("</Root>")
+    if root_start < 0 or root_end < 0:
+        return None
+    root = xml[root_start : root_end + len("</Root>")]
+    index_raw = _xtraz_xml_tag(root, "index")
+    try:
+        index = int(index_raw)
+    except ValueError:
+        index = 0
+    return XtrazNotifyResponse(
+        uin=_xtraz_xml_tag(root, "uin"),
+        index=index,
+        title=_xtraz_xml_tag(root, "title"),
+        message=_xtraz_xml_tag(root, "desc"),
+    )
+
+
+def build_capabilities_blob(xstatus_index: int = 0) -> bytes:
+    caps = bytearray(CAPS_SETUSERINFO)
+    if xstatus_index and xstatus_index in XSTATUS_GUIDS:
+        caps.extend(CAP_XTRAZ_SCRIPT)
+        caps.extend(XSTATUS_GUIDS[xstatus_index])
+    return bytes(caps)
+
+
+def build_xtraz_plugin_data(xml_payload: str) -> bytes:
+    name = b"Script Plug-in: Remote Notification Arrive"
+    data = xml_payload.encode("utf-8")
+    header_len = 16 + 2 + 4 + len(name) + 4 + 4 + 4 + 2 + 1
+    buf = RawPkt()
+    pkt_lint(buf, header_len, 2)
+    pkt_add_arr_buf(buf, CAP_XTRAZ_SCRIPT)
+    pkt_lint(buf, XTRAZ_FUNC_NOTIFY, 2)
+    pkt_lint(buf, len(name), 4)
+    pkt_add_arr_buf(buf, name)
+    pkt_int(buf, 0x00000100, 4)
+    pkt_int(buf, 0, 4)
+    pkt_int(buf, 0, 4)
+    pkt_int(buf, 0, 2)
+    pkt_int(buf, 0, 1)
+    pkt_lint(buf, len(data), 4)
+    pkt_add_arr_buf(buf, data)
+    return buf.bytes()
+
+
+def build_xtraz_icq2711(xml_payload: str, status: int = S_ONLINE) -> bytes:
+    plugin = build_xtraz_plugin_data(xml_payload)
+    buf = RawPkt()
+    pkt_lint(buf, 0x001B, 2)
+    pkt_lint(buf, ICQ_PROTOCOL_VER, 2)
+    for _ in range(4):
+        pkt_int(buf, 0, 4)
+    pkt_lint(buf, 0, 2)
+    pkt_int(buf, 0x03, 1)
+    pkt_int(buf, 0, 4)
+    seq1 = 0xFFFE
+    pkt_lint(buf, seq1, 2)
+    pkt_lint(buf, 0x000E, 2)
+    pkt_lint(buf, seq1, 2)
+    for _ in range(3):
+        pkt_lint(buf, 0, 4)
+    pkt_lint(buf, MESSAGE_TYPE_EXTENDED, 2)
+    pkt_lint(buf, status_to_int(status) & 0xFFFF, 2)
+    pkt_lint(buf, 0x0001, 2)
+    pkt_lint(buf, 1, 2)
+    pkt_int(buf, 0, 1)
+    pkt_int(buf, 0, 1)
+    pkt_add_arr_buf(buf, plugin)
+    return buf.bytes()
+
+
+def extract_xtraz_xml_from_tlv2711(data: bytes) -> Optional[bytes]:
+    pos = data.find(CAP_XTRAZ_SCRIPT)
+    if pos < 0:
+        return None
+    p = pos + 16 + 2
+    if p + 4 > len(data):
+        return None
+    name_len = int.from_bytes(data[p : p + 4], "little")
+    p += 4 + name_len + 4 + 4 + 4 + 2 + 1
+    if p + 4 > len(data):
+        return None
+    data_len = int.from_bytes(data[p : p + 4], "little")
+    p += 4
+    if p + data_len > len(data):
+        return None
+    return data[p : p + data_len]
+
+
+def find_xtraz_payload(data: bytes) -> Optional[bytes]:
+    pos = 26 if len(data) >= 26 and data[10:26] == CAP_XTRAZ_SCRIPT else 0
+    while pos + 4 <= len(data):
+        tag = int.from_bytes(data[pos : pos + 2], "big")
+        size = int.from_bytes(data[pos + 2 : pos + 4], "big")
+        pos += 4
+        if pos + size > len(data):
+            break
+        if tag == 0x2711:
+            chunk = data[pos : pos + size]
+            if chunk and chunk[0] != 0x1B:
+                return chunk
+            xml = extract_xtraz_xml_from_tlv2711(chunk)
+            if xml is not None:
+                return xml
+        pos += size
+    if data and data[0] != 0x1B and (b"<N>" in data or b"&lt;N&gt;" in data or b"<NR>" in data or b"&lt;NR&gt;" in data):
+        return data
+    if data and data[0] == 0x1B:
+        xml = extract_xtraz_xml_from_tlv2711(data)
+        if xml is not None:
+            return xml
+    return None
+
+
 def icq_encrypt_pass_str(password: str) -> bytes:
     raw = password.encode("ascii", errors="replace")
     out = bytearray(raw)
@@ -1246,10 +1546,79 @@ def create_cli_reqbos(pkt: RawPkt, seq: List[int]) -> None:
     pkt_final(pkt)
 
 
-def create_cli_setuserinfo(pkt: RawPkt, seq: List[int]) -> None:
+def create_cli_setuserinfo(pkt: RawPkt, seq: List[int], caps: Optional[bytes] = None) -> None:
     pkt_init(pkt, 2, seq)
     pkt_snac(pkt, 0x02, 0x04, 0, 0)
-    pkt_tlv_buf(pkt, 5, CAPS_SETUSERINFO)
+    pkt_tlv_buf(pkt, 5, caps if caps is not None else CAPS_SETUSERINFO)
+    pkt_final(pkt)
+
+
+def create_cli_set_xstatus_mood(pkt: RawPkt, index: int, title: str, message: str, seq: List[int]) -> None:
+    text = f"{title} {message}".strip()
+    if len(text) >= 250:
+        text = text[:247] + "..."
+    mood = f"0icqmood{index}" if index else ""
+    mood_arr = mood.encode("utf-8")
+    msg_arr = text.encode("utf-8")
+    x_msg_len = 0 if not msg_arr else (2 + len(msg_arr) + 2)
+    inner = RawPkt()
+    pkt_int(inner, 0x000E, 2)
+    pkt_int(inner, len(mood_arr), 2)
+    pkt_add_arr_buf(inner, mood_arr)
+    pkt_int(inner, 0x0002, 2)
+    pkt_int(inner, 0x04, 1)
+    pkt_int(inner, x_msg_len, 1)
+    if x_msg_len:
+        pkt_int(inner, len(msg_arr), 2)
+        pkt_add_arr_buf(inner, msg_arr)
+        pkt_int(inner, 0, 2)
+    pkt_init(pkt, 2, seq)
+    pkt_snac(pkt, 0x01, 0x1E, 0, 0)
+    pkt_tlv_buf(pkt, 0x1D, inner.bytes())
+    pkt_final(pkt)
+
+
+def create_cli_send_xtraz(pkt: RawPkt, uin: int, xml_payload: str, seq: List[int]) -> None:
+    i_time = int(time.time() * 1000) & 0xFFFFFFFF
+    i_random = random.randint(0, 0xFFFF)
+    icq2711 = build_xtraz_icq2711(xml_payload)
+    lp05 = RawPkt()
+    pkt_int(lp05, 0, 2)
+    pkt_lint(lp05, i_time, 4)
+    pkt_lint(lp05, i_random, 2)
+    pkt_int(lp05, 0, 2)
+    pkt_add_arr_buf(lp05, CAPABILITIES_MSG)
+    pkt_tlv_int(lp05, 0x000A, 2, 0x0001)
+    pkt_tlv_int(lp05, 0x000F, 0, 0)
+    pkt_tlv_buf(lp05, 0x2711, icq2711)
+    pkt_init(pkt, 2, seq)
+    pkt_snac(pkt, 0x04, 0x06, 0, 0)
+    pkt_lint(pkt, i_time, 4)
+    pkt_int(pkt, i_random, 2)
+    pkt_int(pkt, 2, 4)
+    pkt_lstr(pkt, str(uin))
+    pkt_tlv_buf(pkt, 5, lp05.bytes())
+    pkt_tlv_int(pkt, 3, 0, 0)
+    pkt_final(pkt)
+
+
+def create_cli_send_xtraz_response(
+    pkt: RawPkt,
+    uin: int,
+    xml_payload: str,
+    cookie_time: int,
+    cookie_id: int,
+    seq: List[int],
+) -> None:
+    icq2711 = build_xtraz_icq2711(xml_payload)
+    pkt_init(pkt, 2, seq)
+    pkt_snac(pkt, 0x04, 0x0B, 0, 0)
+    pkt_int(pkt, cookie_time, 4)
+    pkt_int(pkt, cookie_id, 4)
+    pkt_int(pkt, 0x0002, 2)
+    pkt_lstr(pkt, str(uin))
+    pkt_int(pkt, 0x0003, 2)
+    pkt_add_arr_buf(pkt, icq2711)
     pkt_final(pkt)
 
 
@@ -1694,6 +2063,10 @@ class ICQClient:
         self.search_seq = 0
         self.last_error = ""
         self.status = S_ONLINE
+        self.xstatus_index = 0
+        self.xstatus_title = ""
+        self.xstatus_message = ""
+        self.auto_reply_xstatus = True
         self.logged_in = False
         self.contact_list: List[str] = []
         self.visible_list: List[str] = []
@@ -1725,6 +2098,8 @@ class ICQClient:
         self.on_connection_failed: Optional[Callable[["ICQClient", int, str], None]] = None
         self.on_auth_request: Optional[Callable[["ICQClient", str, str], None]] = None
         self.on_auth_response: Optional[Callable[["ICQClient", str, bool, str], None]] = None
+        self.on_xstatus_request: Optional[Callable[["ICQClient", str, XtrazNotifyRequest], None]] = None
+        self.on_xstatus_recv: Optional[Callable[["ICQClient", str, XtrazNotifyResponse], None]] = None
         self.on_msg_ack: Optional[Callable[["ICQClient", str, int], None]] = None
         self.on_contact_list_recv: Optional[Callable[["ICQClient", str, List[str]], None]] = None
         self.on_auto_msg_response: Optional[Callable[["ICQClient", str, int, int, str], None]] = None
@@ -1909,6 +2284,68 @@ class ICQClient:
         self._send(pkt)
         self.status = new_status
 
+    def set_xstatus(self, index: int, title: str = "", message: str = "") -> None:
+        if index and index not in XSTATUS_NAMES:
+            raise ValueError(f"unknown XStatus index: {index}")
+        self.xstatus_index = index
+        self.xstatus_title = title
+        self.xstatus_message = message
+        if self.logged_in:
+            self._publish_xstatus()
+
+    def clear_xstatus(self) -> None:
+        self.set_xstatus(0)
+
+    def request_xstatus(self, uin: Union[str, int]) -> None:
+        if not self.logged_in:
+            return
+        xml = build_xtraz_notify_request(self.uin)
+        pkt = RawPkt()
+        create_cli_send_xtraz(pkt, int(str(uin)), xml, self._seq)
+        self._send(pkt)
+
+    def send_xstatus_response(
+        self,
+        uin: Union[str, int],
+        index: Optional[int] = None,
+        title: str = "",
+        message: str = "",
+        cookie_time: int = 0,
+        cookie_id: int = 0,
+    ) -> None:
+        if not self.logged_in:
+            return
+        idx = self.xstatus_index if index is None else index
+        xml = build_xtraz_notify_response(self.uin, idx, title or self.xstatus_title, message or self.xstatus_message)
+        pkt = RawPkt()
+        if cookie_time or cookie_id:
+            create_cli_send_xtraz_response(pkt, int(str(uin)), xml, cookie_time, cookie_id, self._seq)
+        else:
+            create_cli_send_xtraz(pkt, int(str(uin)), xml, self._seq)
+        self._send(pkt)
+
+    def _publish_xstatus(self) -> None:
+        caps = build_capabilities_blob(self.xstatus_index)
+        pkt = RawPkt()
+        create_cli_setuserinfo(pkt, self._seq, caps)
+        self._send(pkt)
+        if self.xstatus_index or self.xstatus_title or self.xstatus_message:
+            pkt = RawPkt()
+            create_cli_set_xstatus_mood(pkt, self.xstatus_index, self.xstatus_title, self.xstatus_message, self._seq)
+            self._send(pkt)
+
+    def _handle_xtraz_payload(self, uin: str, raw: bytes, cookie_time: int = 0, cookie_id: int = 0) -> None:
+        req = parse_xtraz_notify_request(raw)
+        if req and req.request_id == "AwayStat":
+            if self.on_xstatus_request:
+                self.on_xstatus_request(self, uin, req)
+            if self.auto_reply_xstatus and self.xstatus_index:
+                self.send_xstatus_response(uin, cookie_time=cookie_time, cookie_id=cookie_id)
+            return
+        resp = parse_xtraz_notify_response(raw)
+        if resp and self.on_xstatus_recv:
+            self.on_xstatus_recv(self, uin, resp)
+
     def add_contact_visible(self, uin: int) -> bool:
         s = str(uin)
         if s in self.visible_list:
@@ -2044,7 +2481,7 @@ class ICQClient:
                             self.on_msg_ack(self, u, msg_id)
                 elif snac.family == 0x09 and snac.sub_type == 0x03:
                     p = RawPkt()
-                    create_cli_setuserinfo(p, self._seq)
+                    create_cli_setuserinfo(p, self._seq, build_capabilities_blob(self.xstatus_index))
                     self._send(p)
                     if self.contact_list:
                         uins = [int(x) for x in self.contact_list]
@@ -2072,6 +2509,8 @@ class ICQClient:
                     self.logged_in = True
                     self._login_ok = True
                     self._login_event.set()
+                    if self.xstatus_index:
+                        self._publish_xstatus()
                     if self.on_login:
                         self.on_login(self)
                 elif snac.family == 0x13:
@@ -2174,7 +2613,6 @@ class ICQClient:
         if msg_type == 2:
             uin = get_str(pkt, get_int(pkt, 1))
             get_int(pkt, 4)
-            msg = ""
             for _ in range(7):
                 if get_int(pkt, 2) != 5:
                     get_int(pkt, get_int(pkt, 2))
@@ -2183,27 +2621,39 @@ class ICQClient:
                 if get_int(pkt, 2) != 0:
                     pkt.pos += fsize - 2
                     continue
-                pkt.pos += 16 + 8
+                payload = get_bytes(pkt, fsize - 2)
+                xtraz_raw = find_xtraz_payload(payload)
+                if xtraz_raw is not None:
+                    self._handle_xtraz_payload(uin, xtraz_raw, i_time, i_random)
+                    return
+                if len(payload) < 24:
+                    return
+                sub = RawPkt()
+                sub.buf = bytearray(payload)
+                sub.pos = 24
+                msg = ""
                 for _tlv in range(6):
-                    tlv_type = get_int(pkt, 2)
+                    if sub.pos + 4 > len(sub.buf):
+                        break
+                    tlv_type = get_int(sub, 2)
                     if tlv_type == 0x2711:
-                        get_int(pkt, 2)
-                        chunk_start = pkt.pos
-                        if get_int(pkt, 1) != 0x1B:
+                        tlv_len = get_int(sub, 2)
+                        chunk_start = sub.pos
+                        if get_int(sub, 1) != 0x1B:
                             return
-                        pkt.pos += 26
-                        ff_seq = get_int(pkt, 2)
-                        pkt.pos += 16
-                        mtype = get_int(pkt, 1)
-                        mflag = get_int(pkt, 1)
-                        get_int(pkt, 4)
+                        sub.pos += 26
+                        ff_seq = get_int(sub, 2)
+                        sub.pos += 16
+                        mtype = get_int(sub, 1)
+                        mflag = get_int(sub, 1)
+                        get_int(sub, 4)
                         if (mtype & 0xE0) == 0xE0 and mflag == MFLAG_AUTO:
-                            amsg = get_lnts(pkt)
+                            amsg = get_lnts(sub)
                             if self.on_auto_msg_response:
                                 self.on_auto_msg_response(self, uin, i_random, mtype, amsg)
                         else:
-                            msg = get_lnts(pkt)
-                        chunks = pkt.buf[chunk_start : chunk_start + 47]
+                            msg = get_lnts(sub)
+                        chunks = sub.buf[chunk_start : chunk_start + tlv_len]
                         ack = RawPkt()
                         pkt_init(ack, 2, self._seq)
                         pkt_snac(ack, 0x04, 0x0B, 0, 0)
@@ -2228,7 +2678,8 @@ class ICQClient:
                                 self.on_message_recv(self, msg, uin)
                         return
                     else:
-                        get_int(pkt, get_int(pkt, 2))
+                        skip = get_int(sub, 2)
+                        sub.pos += skip
             return
 
         if msg_type == 4:
@@ -2284,10 +2735,21 @@ __all__ = [
     "ErrorType",
     "ProxyType",
     "InfoType",
+    "XtrazNotifyRequest",
+    "XtrazNotifyResponse",
     "S_ONLINE",
     "S_INVISIBLE",
     "S_AWAY",
     "M_PLAIN",
+    "XSTATUS_BEER",
+    "XSTATUS_MUSIC",
+    "XSTATUS_COFFEE",
+    "XSTATUS_NAMES",
+    "xstatus_name",
+    "build_xtraz_notify_request",
+    "build_xtraz_notify_response",
+    "parse_xtraz_notify_request",
+    "parse_xtraz_notify_response",
     "status_to_int",
     "status_to_str",
     "rtf2plain",
